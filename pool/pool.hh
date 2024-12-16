@@ -1,13 +1,19 @@
 #ifndef LWE_POOL_HEADER
 #define LWE_POOL_HEADER
 
+#include "aligner.hh"
+#include "allocator.hh"
+#include "deque.hh"
+
 #include <queue>
 #include <unordered_set>
 #include <concurrent_queue.h>
 #include <cstdlib>
 
+// TODO: padding by alignment value
+
 namespace lwe {
-namespace memory {
+namespace mem {
 
 class pool {
 public:
@@ -65,20 +71,20 @@ public:
      * @note  1. use thread_local, it is thread safe but pool count is same as thread count
      * @note  2. different template parameter ​​result in different types
      */
-    template<typename T, size_t Count = DEFAULT_COUNT, size_t Align = DEFAULT_ALIGN> class allocator {
+    template<typename T, size_t Count = DEFAULT_COUNT, size_t Align = DEFAULT_ALIGN> class constructor {
         using type = global<sizeof(T), Count, Align>;
 
     public:
         /**
          * @brief new
          */
-        template<typename... Args> T* create(Args&&...);
+        template<typename... Args> T* construct(Args&&...);
 
     public:
         /**
          * @brief delete
          */
-        void destroy(T*);
+        void destruct(T*);
 
     public:
         /**
@@ -179,7 +185,7 @@ private:
     /**
      * @brief idle blocks
      */
-    std::queue<block*> idle;
+    data::deque<block*> idle;
 
 private:
     /**
@@ -194,7 +200,7 @@ private:
     Concurrency::concurrent_queue<chunk*> gc;
 };
 
-} // namespace memory
+} // namespace mem
 } // namespace lwe
 
 #include "pool.inl"

@@ -1,7 +1,5 @@
-#ifdef LWE_POOL_HEADER
-
 namespace lwe {
-namespace memory {
+namespace mem {
 
 template<size_t Size, size_t Count, size_t Align>
 thread_local pool pool::global<Size, Count, Align>::singleton{ Size, Count, Align };
@@ -41,18 +39,18 @@ template<size_t Size, size_t Count, size_t Align> inline void pool::global<Size,
 
 template<typename T, size_t Count, size_t Align>
 template<typename... Args>
-T* pool::allocator<T, Count, Align>::create(Args&&... args) {
+T* pool::constructor<T, Count, Align>::construct(Args&&... args) {
     T* ptr = type::allocate(std::forward<Args>(args)...);
     new(ptr) T(std::forward<Args>(args)...);
     return ptr;
 }
 
-template<typename T, size_t Count, size_t Align> void pool::allocator<T, Count, Align>::destroy(T* ptr) {
+template<typename T, size_t Count, size_t Align> void pool::constructor<T, Count, Align>::destruct(T* ptr) {
     ptr->~T();
     type::deallocate(ptr);
 }
 
-template<typename T, size_t Count, size_t Align> void pool::allocator<T, Count, Align>::cleanup() {
+template<typename T, size_t Count, size_t Align> void pool::constructor<T, Count, Align>::cleanup() {
     type::cleanup();
 }
 
@@ -109,7 +107,10 @@ void pool::block::set(chunk* in) {
 }
 
 pool::pool(size_t chunk, size_t count, size_t align):
-    SIZE(padding(chunk) + sizeof(void*)), COUNT(padding(count)), ALIGNMENT(alignment(align)) {}
+    SIZE(util::aligner::adjust((chunk + sizeof(void*)), util::aligner::boundary(align))),
+    COUNT(util::aligner::adjust(count, sizeof(void*))),
+    ALIGNMENT(util::aligner::boundary(align))
+{}
 
 pool::~pool() {
     for(auto i = all.begin(); i != all.end(); ++i) {
@@ -129,14 +130,13 @@ auto pool::generate() -> block* {
 void* pool::allocate() {
     // check
     if(!top) {
-        if(!idle.empty()) {
-            top = idle.front();
-            idle.pop();
-        }
-        else {
-            chunk * ptr;
-            if(gc.try_pop(ptr))
+        if(idle.size()) {
+            idle.fifo(&top);
+        } else {
+            chunk* ptr;
+            if(gc.try_pop(ptr)) {
                 return ptr;
+            }
         }
         top = generate();
     }
@@ -149,7 +149,10 @@ void* pool::allocate() {
             top             = top->next; // next
             top->prev->next = nullptr;   // unlink
             top->prev       = nullptr;   // unlink
-        } else top = nullptr;
+        }
+
+        else
+            top = nullptr;
     }
     return ptr;
 }
@@ -165,6 +168,7 @@ void pool::deallocate(void* in) {
     if(this == self) {
         free(ptr);
     }
+
     // to correct pool
     else
         self->gc.push(ptr);
@@ -181,11 +185,13 @@ void pool::cleanup() {
         garbage->from->set(garbage);
     }
 
-    while(!idle.empty()) {
-        block* ptr = idle.front();
-        idle.pop();
-        all.erase(ptr);
-        _aligned_free(ptr);
+    while(idle.size()) {
+        block* ptr = nullptr;
+        idle.fifo(&ptr);
+        if(ptr) {
+            all.erase(ptr);
+            _aligned_free(ptr);
+        }
     }
 }
 
@@ -228,25 +234,5 @@ void pool::release(void* in) {
     parent->gc.push(ptr);
 }
 
-size_t pool::alignment(size_t in) {
-    if(in-- <= sizeof(void*)) {
-        return sizeof(void*);
-    }
-
-    for(size_t i = 1; i < (sizeof(void*) * 8); i <<= 1) {
-        in |= in >> i;
-    }
-    return in + 1;
-}
-
-size_t pool::padding(size_t in) {
-    if(in == 0) {
-        return sizeof(void*);
-    }
-    return sizeof(void*) * ((in - 1) / sizeof(void*)) + sizeof(void*);
-}
-
 } // namespace memory
 } // namespace lwe
-
-#endif
