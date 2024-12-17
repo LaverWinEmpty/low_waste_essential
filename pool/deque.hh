@@ -10,11 +10,9 @@ namespace data {
 /**
  * @brief non thread-safe
  */
-template<typename T, size_t Size = config::DEF_COUNT, size_t Align = config::DEF_ALIGN> class deque {
+template<typename T, size_t Size = config::DEF_CACHE, size_t Align = config::DEF_ALIGN> class deque {
     struct node;
-
-public:
-    using allocator = lwe::mem::allocator<sizeof(node), util::aligner::boundary(Align), Size>;
+    using  allocator = lwe::mem::allocator::statics<sizeof(node), util::aligner::boundary(Align), Size>;
 
 public:
     deque();
@@ -31,7 +29,7 @@ public:
      * @brief pop_front
      *
      * @param  [out] nullptr: not get, call destructor
-     * @return false: allocate failed
+     * @return false: at empty
      */
     bool fifo(T* = nullptr);
 
@@ -40,23 +38,29 @@ public:
      * @brief pop_back
      *
      * @param  [out] nullptr: not get, call destructor
-     * @return false: allocate failed
+     * @return false: at empty
      */
     bool lifo(T* = nullptr);
 
 public:
     /**
-     * @brief peek like deque
+     * @brief peek first: like deque
      * @note  safe: not reallocate
      */
     T* front() const;
 
 public:
     /**
-     * @brief peek like stack
+     * @brief peek last: like stack
      * @note  safe: not reallocate
      */
     T* top() const;
+
+private:
+    /**
+     * @brief actual delete (fifo / lifo)
+     */
+    bool pop(T* in, T* out);
 
 private:
     /**

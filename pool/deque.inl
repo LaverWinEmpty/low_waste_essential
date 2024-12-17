@@ -46,97 +46,89 @@ template<typename T, size_t Size, size_t Align> template<typename Arg> bool dequ
         } else return false;
     }
 
-    last->array[last->tail++] = std::forward<Arg>(in);
+    last->array[last->tail] = std::forward<Arg>(in);
 
+    ++last->tail;
     ++count;
     return true;
 }
 
 template<typename T, size_t Size, size_t Align> bool deque<T, Size, Align>::fifo(T* out) {
-    if(!count) {
+    // false: at empty
+    if(!pop(front(), out)) {
         return false;
     }
 
-    // return
-    if(!out) {
-        first->array[first->head].~T(); // call destructor
-    } else *out = first->array[first->head];
-    --count;
+    // empty: index initialized
+    if(count == 0) {
+        return true;
+    }
 
-    //
+    // node is empty: free node and move to next
     if(++first->head == Size) {
         // next
         if(first->next) {
-            first = first->next;
+            capacity -= Size;
+            first     = first->next;
             allocator::deallocate(first->prev);
-            first->prev  = nullptr;
-            capacity    -= Size;
-        }
-        // recycle
-        else {
-            first->head = 0;
-            first->tail = 0;
+            first->prev = nullptr;
         }
     }
-
-    // init
-    else if(count == 0) {
-        first->head = 0;
-        first->tail = 0;
-    }
-
     return true;
 }
 
 template<typename T, size_t Size, size_t Align> bool deque<T, Size, Align>::lifo(T* out) {
-    if(!count) {
+    if(!pop(top(), out)) {
         return false;
     }
 
-    // return
-    --last->tail;
-    if(!out) {
-        last->array[last->tail].~T(); // call destructor
-    } else *out = last->array[last->tail];
-    --count;
+    // empty: index initialized
+    if(count == 0) {
+        return true;
+    }
 
-    // check
-    if(last->tail == 0) {
-        // prev
+    // node is empty: free node and move to previous
+    if(--last->tail == 0) {
         if(last->prev) {
-            last = last->prev;
+            capacity -= Size;
+            last      = last->prev;
             allocator::deallocate(last->next);
             last->next = nullptr;
-            --capacity;
-        }
-        // recycle
-        else {
-            last->head = 0;
-            last->tail = 0;
         }
     }
-
-    // init
-    else if(count == 0) {
-        first->head = 0;
-        first->tail = 0;
-    }
-
     return true;
 }
 
 template<typename T, size_t Size, size_t Align> T* deque<T, Size, Align>::front() const {
-    if(size()) {
+    if(count) {
         return first->array + first->head;
     }
     return nullptr;
 }
 
 template<typename T, size_t Size, size_t Align> T* deque<T, Size, Align>::top() const {
-    if(size()) {
+    if(count) {
         return last->array + (last->tail - 1);
     }
     return nullptr;
+}
+
+template<typename T, size_t Size, size_t Align> inline bool deque<T, Size, Align>::pop(T* in, T* out) {
+    if(count == 0) {
+        return false;
+    }
+
+    // return;
+    if(out) {
+        *out = *in;
+    } else in->~T();
+
+    // if last node than recycle
+    if(--count == 0) {
+        first->head = 0;
+        first->tail = 0;
+    }
+    return true;
 }
 
 template<typename T, size_t Size, size_t Align> auto deque<T, Size, Align>::create() -> node* {

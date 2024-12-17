@@ -1,49 +1,56 @@
+#include "allocator.hh"
 namespace lwe {
 namespace mem {
 
 template<size_t Size, size_t Align, size_t Cache>
-thread_local allocator<Size, Align, Cache> allocator<Size, Align, Cache>::singleton;
+thread_local allocator allocator::statics<Size, Align, Cache>::instance{ Size, Align, Cache };
 
-template<size_t Size, size_t Align, size_t Cache>
-void* allocator<Size, Align, Cache>::uncaching::allocate(size_t in) noexcept {
-    if(in) {
-        return _aligned_malloc(Size * in, Align);
-    }
-    return nullptr;
+void* allocator::malloc(size_t size, size_t align) noexcept {
+    return _aligned_malloc(size, align);
 }
 
-template<size_t Size, size_t Align, size_t Cache>
-void allocator<Size, Align, Cache>::uncaching::deallocate(void* in) noexcept {
+void allocator::free(void* in) noexcept {
     _aligned_free(in);
 }
+    
+allocator::allocator(size_t size, size_t align, size_t cache):
+    SIZE{ util::aligner::adjust(size) }, ALIGNMENT{ util::aligner::boundary(align) }, CACHE{ cache } {
+    stack = static_cast<void**>(malloc(CACHE * sizeof(void*), sizeof(void*)));
+}
 
-template<size_t Size, size_t Align, size_t Cache> allocator<Size, Align, Cache>::allocator() noexcept: count{ 0 } {}
-
-template<size_t Size, size_t Align, size_t Cache> allocator<Size, Align, Cache>::~allocator() noexcept {
-    for(size_t i = 0; i < count; ++i) {
-        uncaching::deallocate(store[i]);
+allocator::~allocator() noexcept {
+    if(stack) {
+        for(size_t i = 0; i < count; ++i) {
+            free(stack[i]);
+        }
+        free(stack);
     }
 }
 
-template<size_t Size, size_t Align, size_t Cache> void* allocator<Size, Align, Cache>::get() const noexcept {
-    if(count != 0) {
-        return store[--count];
+void* allocator::allocate() noexcept {
+    if(count) {
+        if(stack) {
+            return stack[--count];
+        }
+        return nullptr;
     }
-    return uncaching::allocate(1);
+    return malloc(SIZE, ALIGNMENT);
 }
 
-template<size_t Size, size_t Align, size_t Cache> void allocator<Size, Align, Cache>::free(void* in) const noexcept {
-    if(count >= Cache) {
-        uncaching::deallocate(in);
-    } else store[count++] = in;
+void allocator::deallocate(void* in) noexcept {
+    if(stack && count < CACHE) {
+        stack[count++] = in;
+    } else free(in);
 }
 
-template<size_t Size, size_t Align, size_t Cache> void* allocator<Size, Align, Cache>::allocate() noexcept {
-    return singleton.get();
+template<size_t Size, size_t Align, size_t Cache>
+void* allocator::statics<Size, Align, Cache>::allocate() noexcept {
+    return instance.allocate();
 }
 
-template<size_t Size, size_t Align, size_t Cache> void allocator<Size, Align, Cache>::deallocate(void* in) noexcept {
-    singleton.free(in);
+template<size_t Size, size_t Align, size_t Cache>
+void allocator::statics<Size, Align, Cache>::deallocate(void* in) noexcept {
+    instance.deallocate(in);
 }
 
 } // namespace mem

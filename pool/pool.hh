@@ -5,7 +5,6 @@
 #include "allocator.hh"
 #include "deque.hh"
 
-#include <queue>
 #include <unordered_set>
 #include <concurrent_queue.h>
 #include <cstdlib>
@@ -23,15 +22,6 @@ public:
     pool& operator=(pool&&)      = delete;
 
 private:
-    static constexpr size_t DEFAULT_COUNT = (sizeof(intptr_t) * sizeof(intptr_t)) << 2;
-    static constexpr size_t DEFAULT_ALIGN = sizeof(intptr_t);
-
-private:
-    /**
-     * @brief helper to next address in empty space when idle
-     */
-    struct chunk;
-
     /**
      * @brief memory pool block node
      */
@@ -41,56 +31,15 @@ public:
     /**
      * @brief thread-safe static memory pool
      * @note  1. use thread_local, it is thread safe but pool count is same as thread count
-     * @note  2. different template parameter ​​result in different types
+     * @note  2. different template parameter result in different types
      */
-    template<size_t Size, size_t Count = DEFAULT_COUNT, size_t Align = DEFAULT_ALIGN> class global {
+    template<size_t Size, size_t Count = config::DEF_CACHE, size_t Align = config::DEF_ALIGN> class statics {
         static thread_local pool singleton;
 
     public:
-        /**
-         * @brief malloc
-         */
         static void* allocate();
-
-    public:
-        /**
-         * @brief free
-         */
-        static void deallocate(void* in);
-
-    public:
-        /**
-         * @brief call pool::cleanup
-         */
-        static void cleanup();
-    };
-
-public:
-    /**
-     * @brief thread-safe static memory pool based on object type
-     * @note  1. use thread_local, it is thread safe but pool count is same as thread count
-     * @note  2. different template parameter ​​result in different types
-     */
-    template<typename T, size_t Count = DEFAULT_COUNT, size_t Align = DEFAULT_ALIGN> class constructor {
-        using type = global<sizeof(T), Count, Align>;
-
-    public:
-        /**
-         * @brief new
-         */
-        template<typename... Args> T* construct(Args&&...);
-
-    public:
-        /**
-         * @brief delete
-         */
-        void destruct(T*);
-
-    public:
-        /**
-         * @brief call pool::cleanup
-         */
-        void cleanup();
+        static void  deallocate(void* in);
+        static void  cleanup();
     };
 
 public:
@@ -101,7 +50,7 @@ public:
      * @param [in] count - chunk count.
      * @param [in] align - chunk Align, it is adjusted to the power of 2.
      */
-    pool(size_t chunk, size_t count = DEFAULT_COUNT, size_t align = DEFAULT_ALIGN);
+    pool(size_t chunk, size_t count = config::DEF_CACHE, size_t align = config::DEF_ALIGN);
 
 public:
     /**
@@ -113,13 +62,13 @@ public:
     /**
      * @brief get memory, call malloc when top is null and garbage collector is empty.
      */
-    void* allocate();
+    template<typename T = void, typename... Args> T* construct(Args&&...) noexcept;
 
 public:
     /**
      * @brief return memory, if not child of pool, push to garbage collector of parent pool.
      */
-    void deallocate(void*);
+    template<typename T = void> void destruct(T*) noexcept;
 
 public:
     /**
@@ -131,31 +80,26 @@ private:
     /**
      * @brief call memory allocate function.
      */
-    block* generate();
+    block* setup();
 
 private:
     /**
      * @brief chunk to block.
      */
-    void free(chunk*);
+    void release(void*);
 
 public:
     /**
-     * @brief return memory to parent pool
+     * @brief auto return memory to parent pool
      */
-    static void release(void*);
+    static void revert(void*) noexcept;
 
 private:
     /**
-     * @brief value to power of 2.
+     * @brief memory alignment
+     * @note  FIRST INTIALIZE ON CONSTRUCTOR
      */
-    static size_t alignment(size_t);
-
-private:
-    /**
-     * @brief value to muiple of pointer size.
-     */
-    static size_t padding(size_t in);
+    const size_t ALIGNMENT;
 
 private:
     /**
@@ -171,9 +115,9 @@ private:
 
 private:
     /**
-     * @brief memory alignment
+     * @brief allocated size
      */
-    const size_t ALIGNMENT;
+    const size_t ALLOCTATE;
 
 private:
     /**
@@ -197,7 +141,7 @@ private:
     /**
      * @brief temp lock-free queue for windows
      */
-    Concurrency::concurrent_queue<chunk*> gc;
+    Concurrency::concurrent_queue<void*> gc;
 };
 
 } // namespace mem
