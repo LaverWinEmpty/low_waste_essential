@@ -106,9 +106,9 @@ public:
         static thread_local pool singleton;
 
     public:
-        template<typename T>static void* construct(Args&&...) noexcept;
-        template<typename T>static void  destruct(T*) noexcept;
-        static void                      cleanup() noexcept;
+        template<typename T, typename... Args> static T* construct(Args&&...) noexcept;
+        template<typename T> static void                 destruct(T*) noexcept;
+        static void                                      cleanup() noexcept;
     };
 
 public:

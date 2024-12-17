@@ -18,12 +18,12 @@ struct pool::block {
 };
 
 template<size_t Size, size_t Count, size_t Align>
-template<typenaem T, typename... Args> T* pool::statics<Size, Count, Align>::construct(Args&&... args) noexcept {
+template<typename T, typename... Args> T* pool::statics<Size, Count, Align>::construct(Args&&... args) noexcept {
     return singleton.construct<T>(std::forward<Args>(args)...);
 }
 
 template<size_t Size, size_t Count, size_t Align> 
-template<typename T> void pool::statics<Size, Count, Align>::deallocate(T* in) noexcept {
+template<typename T> void pool::statics<Size, Count, Align>::destruct(T* in) noexcept {
     singleton.destruct<T>(in);
 }
 
@@ -98,7 +98,7 @@ pool::~pool() noexcept {
     }
 }
 
-auto pool::setup() -> block* noexcept {
+auto pool::setup() noexcept->block* {
     if(block* self = static_cast<block*>(_aligned_malloc(ALLOCTATE, ALIGNMENT))) {
         self->initialize(this, COUNT, ALIGNMENT);
         all.insert(self);
