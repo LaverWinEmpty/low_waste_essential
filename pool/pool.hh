@@ -9,7 +9,75 @@
 #include <concurrent_queue.h>
 #include <cstdlib>
 
-// TODO: padding by alignment value
+/*******************************************************************************
+ * pool structure
+ *
+ * example configuration
+ *  - chunk: 96
+ *  - align: 32
+ *  - count: 2
+ *
+ * 192                 256                384         512 << address
+ *  ├───────┬────┬──────┼──────┬────┬──────┼──────┬────┤
+ *  │ block │    │ meta │ data │    │ meta │ data │    │
+ *  └───────┼────┼──────┴──────┼────┼──────┴──────┼────┤
+ *          └ 24 ┤             ├ 24 ┤             ├ 32 ┘  << padding
+ *               └ ─  chunk  ─ ┘    └ ─  chunk  ─ ┘
+ *
+ * total: 320 byte (64 + 128 * 2)
+ *
+ * - block : block header (struct) like node
+ *   ├─[ 8 byte]: next chunk pointer
+ *   ├─[ 8 byte]: next block pointer
+ *   ├─[ 8 byte]: prev block pointer
+ *   ├─[ 8 byte]: parent pool pointer
+ *   └─[32 byte]: padding
+ *
+ * - chunk: abstract object, not a struct
+ *   ├─[ 8 byte]: parent block address (meta)
+ *   ├─[96 byte]: actual usable space  (data)
+ *   └─[24 byte]: padding
+ *
+ * NOTE: align is intended for SIMD use and increases capacity.
+ * block header padding reason: to ensures alignment for chunk start addresses.
+ *
+ ******************************************************************************/
+
+/*******************************************************************************
+ * how to use
+ *
+ * 1. use statics
+ * - thread local object (lock-free)
+ *
+ *    type* ptr = pool::statics<sizeof(type)>::construct(...); // malloc
+ *    pool<sizeof(type)>::deconstruct<type>(ptr);              // free
+ *
+ * 2. create object (NOT THREAD-SAFE)
+ *
+ *    pool p1(sizeof(type), 512, 8);
+ *    pool p2(sizeof(type), 256, 32);
+ *
+ *    type* ptr = p1.construct<type>(...); // malloc "p1"
+ *    p2.destruct<type>(ptr);              // free "p2" is ok (not recommended)
+ *
+ * - automatically finds parent.
+ * - but in this case, it goes into gc. (not recommanded reason)
+ * - can also use it like this.   
+ *
+ *    pool::release(ptr); // free
+ *
+ * - this is for use when the parents are unknown.
+ * 
+ * gc (garbage collector)
+ * - lock-free queue.
+ * - push if parents are different.
+ * - gc cleanup is call cleanup(), or call destructe().
+ * - used for thread-safety.
+ *
+ * - unused memory can be free by calling cleanup().
+ * - NOTE: it is actual memory deallocate.
+ * - call at the right time.
+ ******************************************************************************/
 
 namespace lwe {
 namespace mem {
@@ -24,6 +92,7 @@ public:
 private:
     /**
      * @brief memory pool block node
+     * @note  4 pointer = 32 byte in x64
      */
     struct block;
 
@@ -37,9 +106,9 @@ public:
         static thread_local pool singleton;
 
     public:
-        static void* allocate();
-        static void  deallocate(void* in);
-        static void  cleanup();
+        template<typename T>static void* construct(Args&&...) noexcept;
+        template<typename T>static void  destruct(T*) noexcept;
+        static void                      cleanup() noexcept;
     };
 
 public:
@@ -50,13 +119,13 @@ public:
      * @param [in] count - chunk count.
      * @param [in] align - chunk Align, it is adjusted to the power of 2.
      */
-    pool(size_t chunk, size_t count = config::DEF_CACHE, size_t align = config::DEF_ALIGN);
+    pool(size_t chunk, size_t count = config::DEF_CACHE, size_t align = config::DEF_ALIGN) noexcept ;
 
 public:
     /**
      * @brief destroy the pool object.
      */
-    ~pool();
+    ~pool() noexcept;
 
 public:
     /**
@@ -74,25 +143,25 @@ public:
     /**
      * @brief cleaning idle blocks and garbage collector.
      */
-    void cleanup();
+    void cleanup() noexcept;
 
 private:
     /**
      * @brief call memory allocate function.
      */
-    block* setup();
+    block* setup() noexcept;
 
 private:
     /**
      * @brief chunk to block.
      */
-    void release(void*);
+    void recycle(void*) noexcept;
 
 public:
     /**
      * @brief auto return memory to parent pool
      */
-    static void revert(void*) noexcept;
+    template<typename T = void> static void release(T*) noexcept;
 
 private:
     /**
@@ -115,7 +184,7 @@ private:
 
 private:
     /**
-     * @brief allocated size
+     * @brief allocate unit: block total size
      */
     const size_t ALLOCTATE;
 

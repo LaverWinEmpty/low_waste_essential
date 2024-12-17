@@ -17,15 +17,17 @@ struct pool::block {
     block*   prev;
 };
 
-template<size_t Size, size_t Count, size_t Align> inline void* pool::statics<Size, Count, Align>::allocate() {
-    return singleton.construct();
+template<size_t Size, size_t Count, size_t Align>
+template<typenaem T, typename... Args> T* pool::statics<Size, Count, Align>::construct(Args&&... args) noexcept {
+    return singleton.construct<T>(std::forward<Args>(args)...);
 }
 
-template<size_t Size, size_t Count, size_t Align> inline void pool::statics<Size, Count, Align>::deallocate(void* in) {
-    singleton.destruct(in);
+template<size_t Size, size_t Count, size_t Align> 
+template<typename T> void pool::statics<Size, Count, Align>::deallocate(T* in) noexcept {
+    singleton.destruct<T>(in);
 }
 
-template<size_t Size, size_t Count, size_t Align> inline void pool::statics<Size, Count, Align>::cleanup() {
+template<size_t Size, size_t Count, size_t Align> void pool::statics<Size, Count, Align>::cleanup() noexcept {
     singleton.cleanup();
 }
 
@@ -76,18 +78,10 @@ void pool::block::set(void* in) {
 }
 
 // clang-format off
-pool::pool(size_t chunk, size_t count, size_t align):
+pool::pool(size_t chunk, size_t count, size_t align) noexcept :
     ALIGNMENT(util::aligner::boundary(align)),
     SIZE(     util::aligner::adjust  (chunk + sizeof(void*), align)),
     COUNT(    util::aligner::adjust  (count, config::DEF_CACHE)),
-
-    // unit variable block + ptr : for chunk metadata(void*) pulling
-    // e.g.
-    // - alignment 16, block 56 => 64,  8 byte can pull
-    // - alignment 16, block 64 => 80,  16 byte can pull
-    // - alignment 64, block 56 => 64,  8 byte can pull
-    // - alignment 64, block 64 => 128, 64 byte can pull
-    // - alignment 8,  block 56 => 64: becauses minus sizeof(void*), and adjust to alignemnt
     ALLOCTATE {
         util::aligner::adjust(
             util::aligner::adjust(sizeof(block) + sizeof(void*), ALIGNMENT)
@@ -98,13 +92,13 @@ pool::pool(size_t chunk, size_t count, size_t align):
 {}
 //clang-format on
 
-pool::~pool() {
+pool::~pool() noexcept {
     for(auto i = all.begin(); i != all.end(); ++i) {
         allocator::free(*i);
     }
 }
 
-auto pool::setup() -> block* {
+auto pool::setup() -> block* noexcept {
     if(block* self = static_cast<block*>(_aligned_malloc(ALLOCTATE, ALIGNMENT))) {
         self->initialize(this, COUNT, ALIGNMENT);
         all.insert(self);
@@ -122,7 +116,7 @@ template<typename T, typename... Args> inline T* pool::construct(Args&&... args)
             idle.fifo(&top);
         }
         
-        // check has released chunk
+        // check has chunk in garbage collector
         else if (gc.try_pop(ptr) == false) {
             top = setup();
             if (!top) {
@@ -169,7 +163,7 @@ void pool::destruct(T* in) noexcept {
 
     // if from this
     if(this == self) {
-        release(ptr);
+        recycle(ptr);
     }
 
     // to correct pool
@@ -177,11 +171,11 @@ void pool::destruct(T* in) noexcept {
 
     // from other pools
     while(gc.try_pop(ptr)) {
-        release(ptr);
+        recycle(ptr);
     }
 }
 
-void pool::cleanup() {
+void pool::cleanup() noexcept {
     void* garbage;
     while(gc.try_pop(garbage)) {
         (*reinterpret_cast<block**>(garbage))->set(garbage);
@@ -197,7 +191,7 @@ void pool::cleanup() {
     }
 }
 
-void pool::release(void* in) {
+void pool::recycle(void* in) noexcept {
     block* parent = *reinterpret_cast<block**>(in);
 
     // empty -> usable
@@ -230,9 +224,15 @@ void pool::release(void* in) {
     }
 }
 
-void pool::revert(void* in) noexcept {
-    pool*  parent = (*reinterpret_cast<block**>(in))->from;
-    parent->gc.push(in);
+template<typename T> void pool::release(T* in) noexcept {
+    uint8_t* ptr = reinterpret_cast<uint8_t*>(in) - sizeof(void*);
+
+    pool* parent = (*reinterpret_cast<block**>(ptr))->from;
+    // delete
+    if constexpr(!std::is_pointer_v<T> && !std::is_void_v<T>) {
+        in->~T();
+    }
+    parent->gc.push(in); // lock-free
 }
 
 } // namespace mem

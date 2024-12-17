@@ -39,6 +39,7 @@ struct aligner {
     /**
      * @brief  check power of 2
      * @note   pointer too
+     *
      * @return false is not power of 2
      */
     static constexpr bool check(size_t in) {
