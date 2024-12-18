@@ -1,0 +1,21 @@
+test environment
+- CPU: AMD Ryzen7 3700X
+- MEM: 16GB
+- OS:  Windows 11
+
+configTest Count: 10
+Block Count: 4096
+Block Size: 256
+Block Align: 16
+=======================================
+...
+=======================================
+average
+std allocate:   934.8us
+std free:       53us
+my allocate:    47.4us
+my free:        23us
+=======================================
+
+* This is the result of the performance test function. (in tester.hh)
+* Results may vary depending on the environment.
