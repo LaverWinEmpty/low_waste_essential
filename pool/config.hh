@@ -6,8 +6,12 @@
 namespace lwe {
 namespace config {
 
-static constexpr size_t DEF_ALIGN = sizeof(void*);
-static constexpr size_t DEF_CACHE = (sizeof(void*) * sizeof(void*)) << 1;
+// CONSTNAT: NO INIT
+enum {
+    DEF_ALIGN = sizeof(void*),
+    DEF_CACHE = (sizeof(void*) * sizeof(void*)) << 1,
+};
+
 
 } // namespace config
 } // namespace lwe

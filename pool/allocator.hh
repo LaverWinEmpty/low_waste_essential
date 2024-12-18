@@ -27,8 +27,8 @@ public:
     void  deallocate(void*) noexcept;
 
 private:
-    const size_t SIZE;
     const size_t ALIGNMENT;
+    const size_t SIZE;
     const size_t CACHE;
 
 private:
@@ -36,15 +36,7 @@ private:
     void** stack = nullptr;
 
 public:
-    template<size_t Size, size_t Align = config::DEF_ALIGN, size_t Cache = config::DEF_CACHE> class statics {
-        static thread_local allocator instance;
-
-    public:
-        statics() = delete;
-
-        static void* allocate()        noexcept;
-        static void  deallocate(void*) noexcept;
-    };
+    template<size_t Size, size_t Align = config::DEF_ALIGN, size_t Cache> static allocator& statics();
 };
 
 } // namespace mem

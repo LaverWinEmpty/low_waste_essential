@@ -12,7 +12,6 @@ namespace data {
  */
 template<typename T, size_t Size = config::DEF_CACHE, size_t Align = config::DEF_ALIGN> class deque {
     struct node;
-    using  allocator = lwe::mem::allocator::statics<sizeof(node), util::aligner::boundary(Align), Size>;
 
 public:
     deque();
@@ -81,6 +80,9 @@ private:
     node*  last;
     size_t count;
     size_t capacity;
+
+private:
+    static mem::allocator& heap;
 };
 
 } // namespace data

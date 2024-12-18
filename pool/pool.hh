@@ -1,6 +1,8 @@
 #ifndef LWE_POOL_HEADER
 #define LWE_POOL_HEADER
 
+// #include "queue"
+
 #include "aligner.hh"
 #include "allocator.hh"
 #include "deque.hh"
@@ -18,11 +20,12 @@
  *  - count: 2
  *
  * 192                 256                384         512 << address
- *  ├───────┬────┬──────┼──────┬────┬──────┼──────┬────┤
- *  │ block │    │ meta │ data │    │ meta │ data │    │
- *  └───────┼────┼──────┴──────┼────┼──────┴──────┼────┤
- *          └ 24 ┤             ├ 24 ┤             ├ 32 ┘  << padding
- *               └ ─  chunk  ─ ┘    └ ─  chunk  ─ ┘
+ * ^                   ^                  ^           ^
+ * ├───────┬────┬──────┼──────┬────┬──────┼──────┬────┤
+ * │ block │    │ meta │ data │    │ meta │ data │    │
+ * └───────┼────┼──────┴──────┼────┼──────┴──────┼────┤
+ *         └ 24 ┤             ├ 24 ┤             ├ 32 ┘   << padding
+ *              └ ─  chunk  ─ ┘    └ ─  chunk  ─ ┘
  *
  * total: 320 byte (64 + 128 * 2)
  *
@@ -33,7 +36,7 @@
  *   ├─[ 8 byte]: parent pool pointer
  *   └─[32 byte]: padding
  *
- * - chunk: abstract object, not a struct
+ * - chunk: not a struct, abstract object for dynamic chunk size.
  *   ├─[ 8 byte]: parent block address (meta)
  *   ├─[96 byte]: actual usable space  (data)
  *   └─[24 byte]: padding
@@ -49,10 +52,11 @@
  * 1. use statics
  * - thread local object (lock-free)
  *
- *    type* ptr = pool::statics<sizeof(type)>::construct(...); // malloc
- *    pool<sizeof(type)>::deconstruct<type>(ptr);              // free
+ *    type* ptr = pool::statics<sizeof(type)>().construct(...); // malloc
+ *    pool::statics<sizeof(type)>().deconstruct<type>(ptr);     // free
  *
  * 2. create object (NOT THREAD-SAFE)
+ *  - NOTE: safe when declared as thread_local.
  *
  *    pool p1(sizeof(type), 512, 8);
  *    pool p2(sizeof(type), 256, 32);
@@ -102,14 +106,7 @@ public:
      * @note  1. use thread_local, it is thread safe but pool count is same as thread count
      * @note  2. different template parameter result in different types
      */
-    template<size_t Size, size_t Count = config::DEF_CACHE, size_t Align = config::DEF_ALIGN> class statics {
-        static thread_local pool singleton;
-
-    public:
-        template<typename T, typename... Args> static T* construct(Args&&...) noexcept;
-        template<typename T> static void                 destruct(T*) noexcept;
-        static void                                      cleanup() noexcept;
-    };
+    template<size_t Size, size_t Count = config::DEF_CACHE, size_t Align = config::DEF_ALIGN> static pool& statics();
 
 public:
     /**
@@ -164,29 +161,11 @@ public:
     template<typename T = void> static void release(T*) noexcept;
 
 private:
-    /**
-     * @brief memory alignment
-     * @note  FIRST INTIALIZE ON CONSTRUCTOR
-     */
-    const size_t ALIGNMENT;
-
-private:
-    /**
-     * @brief chunk size
-     */
-    const size_t SIZE;
-
-private:
-    /**
-     * @brief chunk count
-     */
+    const size_t ALIGN; //! first initialze
+    const size_t BLOCK;
+    const size_t CHUNK;
     const size_t COUNT;
-
-private:
-    /**
-     * @brief allocate unit: block total size
-     */
-    const size_t ALLOCTATE;
+    const size_t TOTAL;
 
 private:
     /**

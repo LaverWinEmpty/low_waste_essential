@@ -3,55 +3,41 @@
 namespace lwe {
 namespace mem {
 
-template<size_t Size, size_t Count, size_t Align>
-thread_local pool pool::statics<Size, Count, Align>::singleton{ Size, Count, Align };
-
 struct pool::block {
-    void  initialize(pool*, size_t, size_t);
+    void  initialize(pool*, size_t);
     void* get();
     void  set(void*);
+    
+    static block* bring(void*);
 
-    pool*    from;
-    uint8_t* curr;
-    block*   next;
-    block*   prev;
+    pool*  from;
+    void*  curr;
+    block* next;
+    block* prev;
 };
 
-template<size_t Size, size_t Count, size_t Align>
-template<typename T, typename... Args> T* pool::statics<Size, Count, Align>::construct(Args&&... args) noexcept {
-    return singleton.construct<T>(std::forward<Args>(args)...);
-}
-
-template<size_t Size, size_t Count, size_t Align> 
-template<typename T> void pool::statics<Size, Count, Align>::destruct(T* in) noexcept {
-    singleton.destruct<T>(in);
-}
-
-template<size_t Size, size_t Count, size_t Align> void pool::statics<Size, Count, Align>::cleanup() noexcept {
-    singleton.cleanup();
-}
-
-void pool::block::initialize(pool* parent, size_t count, size_t alignment) {
+void pool::block::initialize(pool* parent, size_t count) {
     from = parent;
     next = nullptr;
     prev = nullptr;
 
-    uint8_t* cursor = reinterpret_cast<uint8_t*>(this);
+    uint8_t* meta = reinterpret_cast<uint8_t*>(this) + from->BLOCK; // pass header
+    uint8_t* data = meta + sizeof(void*);                           // pass pointer
 
-    cursor += alignment;     // move
-    cursor -= sizeof(void*); // start position;
-    curr    = cursor;        // save
+    curr = reinterpret_cast<void*>(data); // save
 
     // write parent end next
     size_t loop = count - 1;
     for(size_t i = 0; i < loop; ++i) {
-        uint8_t* next                                     = cursor + parent->SIZE;
-        *reinterpret_cast<void**>(cursor)                 = reinterpret_cast<void*>(this);
-        *reinterpret_cast<void**>(cursor + sizeof(void*)) = reinterpret_cast<void*>(next);
-        cursor                                            = next;
+        *reinterpret_cast<void**>(meta) = reinterpret_cast<void*>(this);               // parent
+        *reinterpret_cast<void**>(data) = reinterpret_cast<void*>(data + from->CHUNK); // next
+        
+        meta += from->CHUNK;
+        data += from->CHUNK;
     }
-    *reinterpret_cast<void**>(cursor)                 = reinterpret_cast<void*>(this);
-    *reinterpret_cast<void**>(cursor + sizeof(void*)) = nullptr;
+
+    *reinterpret_cast<void**>(meta) = reinterpret_cast<void*>(this);
+    *reinterpret_cast<void**>(data) = nullptr;
 }
 
 void* pool::block::get() {
@@ -59,36 +45,36 @@ void* pool::block::get() {
         return nullptr;
     }
 
-    void* ptr = static_cast<void*>(curr);
+    // get current
+    void* out = curr;
 
     // set next
-    // block: [[meta][next] ... ]
-    curr = reinterpret_cast<uint8_t*>(*(reinterpret_cast<void**>(curr) + 1));
-    return ptr;
+    curr = *reinterpret_cast<void**>(curr);
+
+    return out;
 }
 
 void pool::block::set(void* in) {
     if(!in) return;
 
     // set next
-    // block: [[meta][next] ... ]
-    *(reinterpret_cast<uintptr_t*>(in) + 1) = reinterpret_cast<uintptr_t>(curr);
+    *(reinterpret_cast<void**>(in)) = curr;
 
-    curr = reinterpret_cast<uint8_t*>(in);
+    curr = in;
+}
+
+auto pool::block::bring(void* in)->block* {
+    void* ptr = reinterpret_cast<void**>(in) - 1;
+    return *reinterpret_cast<block**>(ptr);
 }
 
 // clang-format off
 pool::pool(size_t chunk, size_t count, size_t align) noexcept :
-    ALIGNMENT(util::aligner::boundary(align)),
-    SIZE(     util::aligner::adjust  (chunk + sizeof(void*), align)),
-    COUNT(    util::aligner::adjust  (count, config::DEF_CACHE)),
-    ALLOCTATE {
-        util::aligner::adjust(
-            util::aligner::adjust(sizeof(block) + sizeof(void*), ALIGNMENT)
-                + (SIZE * COUNT) - sizeof(void*),
-            ALIGNMENT
-        )
-    }
+    ALIGN{ util::aligner::boundary(align) },
+    BLOCK{ util::aligner::adjust(sizeof(block) + sizeof(void*), ALIGN) },
+    CHUNK{ util::aligner::adjust(chunk + sizeof(void*), ALIGN) },
+    COUNT{ util::aligner::adjust(count, config::DEF_CACHE) },
+    TOTAL{ BLOCK + (CHUNK * COUNT) }
 {}
 //clang-format on
 
@@ -99,12 +85,17 @@ pool::~pool() noexcept {
 }
 
 auto pool::setup() noexcept->block* {
-    if(block* self = static_cast<block*>(_aligned_malloc(ALLOCTATE, ALIGNMENT))) {
-        self->initialize(this, COUNT, ALIGNMENT);
+    if(block* self = static_cast<block*>(_aligned_malloc(TOTAL, ALIGN))) {
+        self->initialize(this, COUNT);
         all.insert(self);
         return self;
     }
     return nullptr;
+}
+
+template<size_t Size, size_t Count, size_t Align> pool& pool::statics() {
+    static thread_local pool instance(Size, Count, Align);
+    return instance;
 }
 
 template<typename T, typename... Args> inline T* pool::construct(Args&&... args) noexcept {
@@ -119,10 +110,12 @@ template<typename T, typename... Args> inline T* pool::construct(Args&&... args)
         // check has chunk in garbage collector
         else if (gc.try_pop(ptr) == false) {
             top = setup();
-            if (!top) {
-                return nullptr; // failed
-            }
         }
+    }
+
+    // EXCEPTION
+    if (!top && !ptr) {
+        return nullptr;
     }
 
     // if got => pass
@@ -141,7 +134,7 @@ template<typename T, typename... Args> inline T* pool::construct(Args&&... args)
     }
 
     // return
-    T* ret = reinterpret_cast<T*>(reinterpret_cast<uintptr_t*>(ptr) + 1);
+    T* ret = reinterpret_cast<T*>(ptr);
     if constexpr(!std::is_pointer_v<T> && !std::is_same_v<T, void>) {
         new(ret) T({ std::forward<Args>(args)... }); // new
     }
@@ -157,28 +150,26 @@ void pool::destruct(T* in) noexcept {
         in->~T();
     }
 
-    void*  ptr   = reinterpret_cast<void*>(reinterpret_cast<uintptr_t*>(in) - 1);
-    block* child = *reinterpret_cast<block**>(ptr);
-    pool*  self  = child->from;
-
     // if from this
+    pool* self = block::bring(in)->from;
     if(this == self) {
-        recycle(ptr);
+        recycle(in);
     }
 
     // to correct pool
-    else self->gc.push(ptr);
+    else self->gc.push(in);
 
     // from other pools
-    while(gc.try_pop(ptr)) {
-        recycle(ptr);
+    while(gc.try_pop(in)) {
+        recycle(in);
     }
 }
 
 void pool::cleanup() noexcept {
     void* garbage;
     while(gc.try_pop(garbage)) {
-        (*reinterpret_cast<block**>(garbage))->set(garbage);
+        block::bring(garbage)->set(garbage); // child blocks
+        (*reinterpret_cast<block**>(reinterpret_cast<void**>(garbage) - 1))->set(garbage);
     }
 
     while(idle.size()) {
@@ -192,7 +183,7 @@ void pool::cleanup() noexcept {
 }
 
 void pool::recycle(void* in) noexcept {
-    block* parent = *reinterpret_cast<block**>(in);
+    block* parent = block::bring(in);
 
     // empty -> usable
     if(parent->curr == nullptr) {

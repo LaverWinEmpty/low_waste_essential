@@ -3,6 +3,9 @@
 namespace lwe {
 namespace data {
 
+template<typename T, size_t Size, size_t Align>
+mem::allocator& deque<T, Size, Align>::heap = mem::allocator::statics<sizeof(node), util::aligner::boundary(Align), Size>();
+
 template<typename T, size_t Size, size_t Align> struct deque<T, Size, Align>::node {
     union {
         T       array[Size];
@@ -31,7 +34,7 @@ template<typename T, size_t Size, size_t Align> deque<T, Size, Align>::~deque() 
 
         node* temp = first;
         first      = first->next;
-        allocator::deallocate(temp);
+        heap.deallocate(temp);
     }
 }
 
@@ -70,7 +73,7 @@ template<typename T, size_t Size, size_t Align> bool deque<T, Size, Align>::fifo
         if(first->next) {
             capacity -= Size;
             first     = first->next;
-            allocator::deallocate(first->prev);
+            heap.deallocate(first->prev);
             first->prev = nullptr;
         }
     }
@@ -92,7 +95,7 @@ template<typename T, size_t Size, size_t Align> bool deque<T, Size, Align>::lifo
         if(last->prev) {
             capacity -= Size;
             last      = last->prev;
-            allocator::deallocate(last->next);
+            heap.deallocate(last->next);
             last->next = nullptr;
         }
     }
@@ -132,7 +135,7 @@ template<typename T, size_t Size, size_t Align> inline bool deque<T, Size, Align
 }
 
 template<typename T, size_t Size, size_t Align> auto deque<T, Size, Align>::create() -> node* {
-    node* ptr = static_cast<node*>(allocator::allocate());
+    node* ptr = static_cast<node*>(heap.allocate());
     if(ptr) {
         ptr->head = 0;
         ptr->tail = 0;
@@ -140,6 +143,7 @@ template<typename T, size_t Size, size_t Align> auto deque<T, Size, Align>::crea
         ptr->prev = nullptr;
     }
     return ptr;
+    return nullptr;
 }
 
 template<typename T, size_t Size, size_t Align> size_t deque<T, Size, Align>::size() const {
