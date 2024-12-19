@@ -85,7 +85,7 @@ pool::~pool() noexcept {
 }
 
 auto pool::setup() noexcept->block* {
-    if(block* self = static_cast<block*>(_aligned_malloc(TOTAL, ALIGN))) {
+    if(block* self = static_cast<block*>(allocator::malloc(TOTAL, ALIGN))) {
         self->initialize(this, COUNT);
         all.insert(self);
         return self;

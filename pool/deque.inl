@@ -1,4 +1,3 @@
-#include <utility>
 #include "deque.hh"
 
 namespace lwe {
@@ -11,7 +10,7 @@ mem::allocator& deque<T, Size, Align>::heap =
 template<typename T, size_t Size, size_t Align> struct deque<T, Size, Align>::node {
     /// @brief union for ignore calls to constructor and destructor
     union {
-        T array[Size];
+        T       array[Size];
         uint8_t serialized[sizeof(T) * Size];
     };
 

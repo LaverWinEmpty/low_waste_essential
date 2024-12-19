@@ -2,7 +2,6 @@
 #define LWE_QUEUE_HEADER
 
 #include "allocator.hh"
-#include "aligner.hh"
 
 namespace lwe {
 namespace data {
@@ -68,6 +67,7 @@ private:
     size_t capacity;
 
 private:
+    /// @brief thread-safe allocator
     static mem::allocator& heap;
 };
 

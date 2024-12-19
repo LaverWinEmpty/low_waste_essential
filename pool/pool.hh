@@ -3,13 +3,7 @@
 
 // #include "queue"
 
-#include "aligner.hh"
-#include "allocator.hh"
 #include "deque.hh"
-
-#include <unordered_set>
-#include <concurrent_queue.h>
-#include <cstdlib>
 
 /*******************************************************************************
  * pool structure
@@ -87,8 +81,8 @@ namespace mem {
  * - used for thread-safety.
  *
  * - unused memory can be free by calling cleanup().
- * - NOTE: it is actual memory deallocate.
  * - call at the right time.
+ * - NOTE: it is actual memory deallocate.
  ******************************************************************************/
 class pool {
 public:

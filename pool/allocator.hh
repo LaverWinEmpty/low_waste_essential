@@ -1,23 +1,19 @@
 #ifndef LWE_ALLOCATOR_HEADER
 #define LWE_ALLOCATOR_HEADER
 
-// TODO: count to atomic
-
-#include <cstdlib>
-#include "aligner.hh"
 #include "config.hh"
-
-/********************************************************************************
- * allocator
- *
- * not thread safe
- *
- * static mehod is nocaching
- ********************************************************************************/
+#include "aligner.hh"
 
 namespace lwe {
 namespace mem {
 
+/********************************************************************************
+ * caching occurs 'free' is when called, but not thread-safe.
+ * 'statics()' is thread-safe: use 'thread_local'.
+ * static mehod is thread-safe but are not cached.
+ *
+ * NOTE: this class for RAII, instance creation is not recommended.
+ ********************************************************************************/
 class allocator {
 public:
     /// @brief aligned malloc, size and align is adjust
@@ -44,7 +40,7 @@ private:
     const size_t CACHE;
 
 private:
-    size_t count = 0;
+    size_t count;
     void** stack = nullptr;
 
 public:
