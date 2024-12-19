@@ -60,6 +60,9 @@ int main();
 // thread main
 void thread(func alloc, func free);
 
+// thread check
+void check();
+
 // alloc
 void allocSTD(size_t idx); // ::malloc
 void allocBoost(size_t idx);
@@ -74,10 +77,6 @@ void freeLWE(size_t idx);
 
 // get next index using mutex
 size_t getNextIndex();
-
-// thread check
-void checkAlloc();
-void checkFree();
 
 //======================================================================================================================
 // temp timer

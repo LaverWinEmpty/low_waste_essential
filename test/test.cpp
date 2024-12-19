@@ -11,6 +11,7 @@
 
 std::vector<std::thread>             gThreads;
 std::pmr::synchronized_pool_resource gStdPmrPool;
+std::unordered_set<void*>            gCheck;
 
 int main() {
     printf("config\n");
@@ -140,35 +141,28 @@ void thread(func allocator, func deallocator) {
     }
     gTimer.stop();
     gTimes[gKind++][gLoop] = gTimer.microseconds();
-    checkAlloc();
+    printf("malloc: ");
+    check();
 
     gIndex = 0;
     gTimer.reset();
     for(size_t idx = getNextIndex(); idx < TEST_CHUNK_COUNT; idx = getNextIndex()) {
         deallocator(idx);
-        gMem[idx] = nullptr;
     }
     gTimer.stop();
     gTimes[gKind++][gLoop] = gTimer.microseconds();
-    checkFree();
+    printf("free: ");
+    check();
 }
 
-void checkAlloc() {
+void check() {
     for(size_t i = 0; i < TEST_CHUNK_COUNT; ++i) {
-        if(gMem[i] == nullptr) {
-            std::cerr << "malloc: detected thread problem" << std::endl;
+        if(gCheck.find(gMem[i]) != gCheck.end()) {
+            printf("detected thread problem\n");
             return;
         }
+        gCheck.insert(gMem[i]);
     }
-    std::cout << "malloc OK: not detected thread problem" << std::endl;
-}
-
-void checkFree() {
-    for(size_t i = 0; i < TEST_CHUNK_COUNT; ++i) {
-        if(gMem[i] != nullptr) {
-            std::cerr << "free: detected thread problem" << std::endl;
-            return;
-        }
-    }
-    std::cout << "free OK: not detected thread problem" << std::endl;
+    printf("not detected thread problem\n");
+    gCheck.clear();
 }
