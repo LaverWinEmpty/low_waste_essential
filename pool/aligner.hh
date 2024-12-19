@@ -6,13 +6,22 @@
 namespace lwe {
 namespace util {
 
+/// @brief static class
 struct aligner {
     aligner() = delete;
 
-    /**
-     * @brief value to next power of 2
-     * @note  eg. x86: [9 -> 12] | x64: [9 -> 16]
-     */
+    /// @brief  check power of 2
+    /// @note   pointer too
+    /// @return false is not power of 2
+    static constexpr bool check(size_t in) {
+        if(in == 0) {
+            return false;
+        }
+        return !(in & (in - 1));
+    };
+
+    /// @brief value to next power of 2
+    /// @note  eg. x86: [9 -> 12] | x64: [9 -> 16]
     static constexpr size_t boundary(size_t in) {
         if(in <= sizeof(void*)) {
             return sizeof(void*);
@@ -24,30 +33,14 @@ struct aligner {
         return in + 1;
     }
 
-    /**
-     * @brief adjust to target
-     *
-     * @param target default: sizeof(void*)
-     */
-    static constexpr size_t adjust(size_t in, size_t target = config::DEF_ALIGN) {
-        if(in < 1) {
-            return 1;
+    /// @brief value to a muliple of the power of 2
+    /// @note  eg. (9, 6) -> return 16: (9 + 8 - 1) / 8 * 8
+    static constexpr size_t padding(size_t in, size_t target = config::DEF_ALIGN) {
+        if(!check(target)) {
+            target = boundary(target);
         }
-        return ((in + target - 1) / target) * target;
+        return (in + target - 1) & ~(target - 1);
     }
-
-    /**
-     * @brief  check power of 2
-     * @note   pointer too
-     *
-     * @return false is not power of 2
-     */
-    static constexpr bool check(size_t in) {
-        if(in == 0) {
-            return false;
-        }
-        return !(in & (in - 1));
-    };
 };
 
 } // namespace util

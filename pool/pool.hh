@@ -19,12 +19,12 @@
  *  - align: 32
  *  - count: 2
  *
- * 192                 256                384         512 << address
- * ^                   ^                  ^           ^
- * ├───────┬────┬──────┼──────┬────┬──────┼──────┬────┤
- * │ block │    │ meta │ data │    │ meta │ data │    │
- * └───────┼────┼──────┴──────┼────┼──────┴──────┼────┤
- *         └ 24 ┤             ├ 24 ┤             ├ 32 ┘   << padding
+ * 192                 256                384         512 | << address
+ * ^                   ^                  ^           ^   |
+ * ├───────┬────┬──────┼──────┬────┬──────┼──────┬────┤   |
+ * │ block │    │ meta │ data │    │ meta │ data │    │   |
+ * └───────┼────┼──────┴──────┼────┼──────┴──────┼────┤   |
+ *         └ 24 ┤             ├ 24 ┤             ├ 32 ┘   | << padding
  *              └ ─  chunk  ─ ┘    └ ─  chunk  ─ ┘
  *
  * total: 320 byte (64 + 128 * 2)
@@ -46,32 +46,40 @@
  *
  ******************************************************************************/
 
+namespace lwe {
+namespace mem {
+
 /*******************************************************************************
  * how to use
  *
  * 1. use statics
  * - thread local object (lock-free)
  *
- *    type* ptr = pool::statics<sizeof(type)>().construct(...); // malloc
- *    pool::statics<sizeof(type)>().deconstruct<type>(ptr);     // free
+ * @code {.cpp}
+ *  type* ptr = pool::statics<sizeof(type)>().construct(...); // malloc
+ *  pool::statics<sizeof(type)>().deconstruct<type>(ptr);     // free
+ * @endcode
  *
  * 2. create object (NOT THREAD-SAFE)
  *  - NOTE: safe when declared as thread_local.
  *
- *    pool p1(sizeof(type), 512, 8);
- *    pool p2(sizeof(type), 256, 32);
- *
- *    type* ptr = p1.construct<type>(...); // malloc "p1"
- *    p2.destruct<type>(ptr);              // free "p2" is ok (not recommended)
+ * @code {.cpp}
+ *  pool p1(sizeof(type), 512, 8);       // declare pool object 1
+ *  pool p2(sizeof(type), 256, 32);      // declare pool object 2
+ *  type* ptr = p1.construct<type>(...); // malloc "p1"
+ *  p2.destruct<type>(ptr);              // free "p2" is ok (not recommended)
+ * @endcode
  *
  * - automatically finds parent.
  * - but in this case, it goes into gc. (not recommanded reason)
- * - can also use it like this.   
+ * - can also use it like this.
  *
- *    pool::release(ptr); // free
+ * @code {.cpp}
+ *  pool::release(ptr); // free
+ * @endcode
  *
  * - this is for use when the parents are unknown.
- * 
+ *
  * gc (garbage collector)
  * - lock-free queue.
  * - push if parents are different.
@@ -82,10 +90,6 @@
  * - NOTE: it is actual memory deallocate.
  * - call at the right time.
  ******************************************************************************/
-
-namespace lwe {
-namespace mem {
-
 class pool {
 public:
     pool(const pool&)            = delete;
@@ -116,79 +120,57 @@ public:
      * @param [in] count - chunk count.
      * @param [in] align - chunk Align, it is adjusted to the power of 2.
      */
-    pool(size_t chunk, size_t count = config::DEF_CACHE, size_t align = config::DEF_ALIGN) noexcept ;
+    pool(size_t chunk, size_t count = config::DEF_CACHE, size_t align = config::DEF_ALIGN) noexcept;
 
 public:
-    /**
-     * @brief destroy the pool object.
-     */
+    /// @brief destroy the pool object.
     ~pool() noexcept;
 
 public:
-    /**
-     * @brief get memory, call malloc when top is null and garbage collector is empty.
-     */
+    /// @brief get memory, call malloc when top is null and garbage collector is empty.
     template<typename T = void, typename... Args> T* construct(Args&&...) noexcept;
 
 public:
-    /**
-     * @brief return memory, if not child of pool, push to garbage collector of parent pool.
-     */
+    /// @brief return memory, if not child of pool, push to garbage collector of parent pool.
     template<typename T = void> void destruct(T*) noexcept;
 
 public:
-    /**
-     * @brief cleaning idle blocks and garbage collector.
-     */
+    /// @brief cleaning idle blocks and garbage collector.
     void cleanup() noexcept;
 
 private:
-    /**
-     * @brief call memory allocate function.
-     */
+    /// @brief call memory allocate function.
     block* setup() noexcept;
 
 private:
-    /**
-     * @brief chunk to block.
-     */
+    /// @brief chunk to block.
     void recycle(void*) noexcept;
 
 public:
-    /**
-     * @brief auto return memory to parent pool
-     */
+    /// @brief auto return memory to parent pool
     template<typename T = void> static void release(T*) noexcept;
 
 private:
-    const size_t ALIGN; //! first initialze
+    const size_t ALIGN;
     const size_t BLOCK;
     const size_t CHUNK;
     const size_t COUNT;
     const size_t TOTAL;
 
 private:
-    /**
-     * @brief stack: current using block
-     */
+    /// @brief stack: current using block
     block* top = nullptr;
 
 private:
-    /**
-     * @brief idle blocks
-     */
+    /// @brief idle blocks
     data::deque<block*> idle;
 
 private:
-    /**
-     * @brief generated blocks
-     */
+    /// @brief generated blocks
     std::unordered_set<block*> all;
 
 private:
-    /**
-     * @brief temp lock-free queue for windows
-     */
+    /// @brief temp lock-free queue for windows
     Concurrency::concurrent_queue<void*> gc;
 };
 

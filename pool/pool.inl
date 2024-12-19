@@ -4,11 +4,11 @@ namespace lwe {
 namespace mem {
 
 struct pool::block {
-    void  initialize(pool*, size_t);
-    void* get();
-    void  set(void*);
-    
-    static block* bring(void*);
+    void  initialize(pool*, size_t) noexcept;
+    void* get() noexcept;
+    void  set(void*) noexcept;
+
+    static block* find(void*) noexcept;
 
     pool*  from;
     void*  curr;
@@ -16,7 +16,7 @@ struct pool::block {
     block* prev;
 };
 
-void pool::block::initialize(pool* parent, size_t count) {
+void pool::block::initialize(pool* parent, size_t count) noexcept {
     from = parent;
     next = nullptr;
     prev = nullptr;
@@ -31,7 +31,7 @@ void pool::block::initialize(pool* parent, size_t count) {
     for(size_t i = 0; i < loop; ++i) {
         *reinterpret_cast<void**>(meta) = reinterpret_cast<void*>(this);               // parent
         *reinterpret_cast<void**>(data) = reinterpret_cast<void*>(data + from->CHUNK); // next
-        
+
         meta += from->CHUNK;
         data += from->CHUNK;
     }
@@ -40,7 +40,7 @@ void pool::block::initialize(pool* parent, size_t count) {
     *reinterpret_cast<void**>(data) = nullptr;
 }
 
-void* pool::block::get() {
+void* pool::block::get() noexcept {
     if(curr == nullptr) {
         return nullptr;
     }
@@ -54,7 +54,7 @@ void* pool::block::get() {
     return out;
 }
 
-void pool::block::set(void* in) {
+void pool::block::set(void* in) noexcept {
     if(!in) return;
 
     // set next
@@ -63,7 +63,7 @@ void pool::block::set(void* in) {
     curr = in;
 }
 
-auto pool::block::bring(void* in)->block* {
+auto pool::block::find(void* in) noexcept -> block* {
     void* ptr = reinterpret_cast<void**>(in) - 1;
     return *reinterpret_cast<block**>(ptr);
 }
@@ -71,9 +71,9 @@ auto pool::block::bring(void* in)->block* {
 // clang-format off
 pool::pool(size_t chunk, size_t count, size_t align) noexcept :
     ALIGN{ util::aligner::boundary(align) },
-    BLOCK{ util::aligner::adjust(sizeof(block) + sizeof(void*), ALIGN) },
-    CHUNK{ util::aligner::adjust(chunk + sizeof(void*), ALIGN) },
-    COUNT{ util::aligner::adjust(count, config::DEF_CACHE) },
+    BLOCK{ util::aligner::padding(sizeof(block) + sizeof(void*), ALIGN) },
+    CHUNK{ util::aligner::padding(chunk + sizeof(void*), ALIGN) },
+    COUNT{ util::aligner::padding(count, config::DEF_CACHE) },
     TOTAL{ BLOCK + (CHUNK * COUNT) }
 {}
 //clang-format on
@@ -151,7 +151,7 @@ void pool::destruct(T* in) noexcept {
     }
 
     // if from this
-    pool* self = block::bring(in)->from;
+    pool* self = block::find(in)->from;
     if(this == self) {
         recycle(in);
     }
@@ -168,7 +168,7 @@ void pool::destruct(T* in) noexcept {
 void pool::cleanup() noexcept {
     void* garbage;
     while(gc.try_pop(garbage)) {
-        block::bring(garbage)->set(garbage); // child blocks
+        block::find(garbage)->set(garbage); // child blocks
         (*reinterpret_cast<block**>(reinterpret_cast<void**>(garbage) - 1))->set(garbage);
     }
 
@@ -183,7 +183,7 @@ void pool::cleanup() noexcept {
 }
 
 void pool::recycle(void* in) noexcept {
-    block* parent = block::bring(in);
+    block* parent = block::find(in);
 
     // empty -> usable
     if(parent->curr == nullptr) {

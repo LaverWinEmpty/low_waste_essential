@@ -1,14 +1,17 @@
+#include <utility>
 #include "deque.hh"
 
 namespace lwe {
 namespace data {
 
 template<typename T, size_t Size, size_t Align>
-mem::allocator& deque<T, Size, Align>::heap = mem::allocator::statics<sizeof(node), util::aligner::boundary(Align), Size>();
+mem::allocator& deque<T, Size, Align>::heap =
+    mem::allocator::statics<sizeof(node), util::aligner::boundary(Align), config::DEF_CACHE>();
 
 template<typename T, size_t Size, size_t Align> struct deque<T, Size, Align>::node {
+    /// @brief union for ignore calls to constructor and destructor
     union {
-        T       array[Size];
+        T array[Size];
         uint8_t serialized[sizeof(T) * Size];
     };
 
