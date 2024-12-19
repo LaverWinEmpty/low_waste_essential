@@ -17,7 +17,7 @@
 //=============================================================================
 // thirdparty
 //=============================================================================
-#include <concurrent_queue.h>
+#include "thirdparty/concurrentqueue/concurrentqueue.h"
 
 namespace lwe {
 namespace config {

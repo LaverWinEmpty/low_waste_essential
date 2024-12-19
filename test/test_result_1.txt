@@ -1,0 +1,59 @@
+test environment
+- CPU: AMD Ryzen 7 7700
+- MEM: 32GB
+- OS:  Windows 11
+
+output
+┌                                                                                     ┐
+    config
+    Test Count: 10
+    Chunk Count: 1000000
+    Chunk Size: 256
+    Chunk Align: 16
+    Thread Count:16
+
+    Test: 1
+    ==============================================================================
+    c malloc / free
+    malloc OK: not detected thread problem
+    free OK: not detected thread problem
+    ==============================================================================
+    ==============================================================================
+    boost::pool
+    malloc OK: not detected thread problem
+    free OK: not detected thread problem
+    ==============================================================================
+    ==============================================================================
+    std::pmr
+    malloc OK: not detected thread problem
+    free OK: not detected thread problem
+    ==============================================================================
+    ==============================================================================
+    custom
+    malloc OK: not detected thread problem
+    free OK: not detected thread problem
+    ==============================================================================
+
+    (omitted...)
+
+    ==============================================================================
+    average
+    c std malloc:   74068.3 us
+    c std free:     73286.1 us
+    boost allocate: 21511   us
+    boost free:     15945.6 us
+    pmr allocate:   116572  us
+    pmr free:       117162  us
+    my allocate:    13982.3 us
+    my free:        13790.9 us
+    ==============================================================================
+
+    NOTE
+    ==============================================================================
+    - custom pool pre-init to full usage: true
+    - boost pool does not support custom alignment.
+    - environment is: Rlease
+└                                                                                     ┘
+
+* This is the result of the performance test function. (in tester.hh)
+* Results may vary depending on the environment.

@@ -8,6 +8,9 @@ namespace lwe {
 namespace mem {
 
 /********************************************************************************
+ * NOTE: STATICS IS RELEASE WHEN TERMINATE END
+ ********************************************************************************
+ * 
  * caching occurs 'free' is when called, but not thread-safe.
  * 'statics()' is thread-safe: use 'thread_local'.
  * static mehod is thread-safe but are not cached.

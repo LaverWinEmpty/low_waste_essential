@@ -21,8 +21,8 @@ void pool::block::initialize(pool* parent, size_t count) noexcept {
     next = nullptr;
     prev = nullptr;
 
-    uint8_t* meta = reinterpret_cast<uint8_t*>(this) + from->BLOCK; // pass header
-    uint8_t* data = meta + sizeof(void*);                           // pass pointer
+    uint8_t* data = reinterpret_cast<uint8_t*>(this) + from->BLOCK; // pass header
+    uint8_t* meta = data - sizeof(void*);                           // pass pointer
 
     curr = reinterpret_cast<void*>(data); // save
 
@@ -69,7 +69,7 @@ auto pool::block::find(void* in) noexcept -> block* {
 }
 
 // clang-format off
-pool::pool(size_t chunk, size_t count, size_t align) noexcept :
+pool::pool(size_t chunk, size_t align, size_t count) noexcept :
     ALIGN{ util::aligner::boundary(align) },
     BLOCK{ util::aligner::padding(sizeof(block) + sizeof(void*), ALIGN) },
     CHUNK{ util::aligner::padding(chunk + sizeof(void*), ALIGN) },
@@ -93,8 +93,8 @@ auto pool::setup() noexcept->block* {
     return nullptr;
 }
 
-template<size_t Size, size_t Count, size_t Align> pool& pool::statics() {
-    static thread_local pool instance(Size, Count, Align);
+template<size_t Size, size_t Align, size_t Count> pool& pool::statics() {
+    static thread_local pool instance(Size, Align, Count);
     return instance;
 }
 
@@ -108,7 +108,7 @@ template<typename T, typename... Args> inline T* pool::construct(Args&&... args)
         }
         
         // check has chunk in garbage collector
-        else if (gc.try_pop(ptr) == false) {
+        else if (gc.try_dequeue(ptr) == false) {
             top = setup();
         }
     }
@@ -157,17 +157,17 @@ void pool::destruct(T* in) noexcept {
     }
 
     // to correct pool
-    else self->gc.push(in);
+    else self->gc.enqueue(in);
 
     // from other pools
-    while(gc.try_pop(in)) {
+    while(gc.try_dequeue(in)) {
         recycle(in);
     }
 }
 
 void pool::cleanup() noexcept {
     void* garbage;
-    while(gc.try_pop(garbage)) {
+    while(gc.try_dequeue(garbage)) {
         block::find(garbage)->set(garbage); // child blocks
         (*reinterpret_cast<block**>(reinterpret_cast<void**>(garbage) - 1))->set(garbage);
     }
@@ -223,7 +223,7 @@ template<typename T> void pool::release(T* in) noexcept {
     if constexpr(!std::is_pointer_v<T> && !std::is_void_v<T>) {
         in->~T();
     }
-    parent->gc.push(in); // lock-free
+    parent->gc.enqueue(in); // lock-free
 }
 
 } // namespace mem

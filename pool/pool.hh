@@ -44,6 +44,8 @@ namespace lwe {
 namespace mem {
 
 /*******************************************************************************
+ * NOTE: STATICS IS RELEASE WHEN TERMINATE END
+ *******************************************************************************
  * how to use
  *
  * 1. use statics
@@ -104,17 +106,17 @@ public:
      * @note  1. use thread_local, it is thread safe but pool count is same as thread count
      * @note  2. different template parameter result in different types
      */
-    template<size_t Size, size_t Count = config::DEF_CACHE, size_t Align = config::DEF_ALIGN> static pool& statics();
+    template<size_t Size, size_t Align = config::DEF_ALIGN, size_t Count = config::DEF_CACHE> static pool& statics();
 
 public:
     /**
      * @brief construct a new pool object
      *
      * @param [in] chunk - chunk size, it is padded to the pointer size.
-     * @param [in] count - chunk count.
-     * @param [in] align - chunk Align, it is adjusted to the power of 2.
+     * @param [in] align - chunk align, it is adjusted to the power of 2.
+     * @param [in] count - chunk count in block.
      */
-    pool(size_t chunk, size_t count = config::DEF_CACHE, size_t align = config::DEF_ALIGN) noexcept;
+    pool(size_t chunk, size_t align = config::DEF_ALIGN, size_t count = config::DEF_CACHE) noexcept;
 
 public:
     /// @brief destroy the pool object.
@@ -165,7 +167,7 @@ private:
 
 private:
     /// @brief temp lock-free queue for windows
-    Concurrency::concurrent_queue<void*> gc;
+    moodycamel::ConcurrentQueue<void*> gc;
 };
 
 } // namespace mem

@@ -145,7 +145,6 @@ template<typename T, size_t Size, size_t Align> auto deque<T, Size, Align>::crea
         ptr->prev = nullptr;
     }
     return ptr;
-    return nullptr;
 }
 
 template<typename T, size_t Size, size_t Align> size_t deque<T, Size, Align>::size() const {
