@@ -44,7 +44,7 @@ namespace lwe {
 namespace mem {
 
 /*******************************************************************************
- * NOTE: STATICS IS RELEASE WHEN TERMINATE END
+ * NOTE: STATICS IS RELEASE WHEN THREAD END
  *******************************************************************************
  * how to use
  *

@@ -8,7 +8,7 @@ namespace lwe {
 namespace mem {
 
 /********************************************************************************
- * NOTE: STATICS IS RELEASE WHEN TERMINATE END
+ * NOTE: STATICS IS RELEASE WHEN THREAD END
  ********************************************************************************
  * 
  * caching occurs 'free' is when called, but not thread-safe.
