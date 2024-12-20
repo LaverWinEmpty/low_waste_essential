@@ -1,5 +1,3 @@
-#include "allocator.hh"
-
 namespace lwe {
 namespace mem {
 
